@@ -8,8 +8,11 @@ class Player:
         self.alive = True
         self.votes = 0  # Number of votes received during voting phase
         self.action_target = None  # Target selected during night actions
-        self.disabled = False  # Disabled by Prostitute
+        self.disabled = False  # Disabled by Witch or Occultist
         self.has_acted = False  # Has the player acted during the night
+        self.reported_dead = False  # Used for night summary
+        self.reported_disabled = False  # Used for night summary
+        self.shooting_action = None  # For Hunter's shooting action
 
     def assign_role(self, role):
         self.role = role
@@ -25,3 +28,4 @@ class Player:
         self.action_target = None
         self.disabled = False
         self.has_acted = False
+        self.shooting_action = None
