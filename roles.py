@@ -10,7 +10,29 @@ class Role:
 
 class Mafia(Role):
     def __init__(self):
-        super().__init__("Mafia", "red")
+        super().__init__("Zombie", "red")  # Renamed to "Zombie"
+
+    def is_mafia_aligned(self):
+        return True
+
+class DonMafia(Role):
+    def __init__(self):
+        super().__init__("Don Mafia", "darkred")  # Changed name to "Don Mafia"
+
+    def is_mafia_aligned(self):
+        return True
+
+class Vampire(Role):
+    def __init__(self):
+        super().__init__("Vampire", "purple")
+
+    def is_mafia_aligned(self):
+        return True
+
+class Werewolf(Role):
+    def __init__(self):
+        super().__init__("Werewolf", "brown")
+        self.is_reborn = False  # Indicates if this Werewolf is from Reborn
 
     def is_mafia_aligned(self):
         return True
@@ -23,15 +45,37 @@ class Doctor(Role):
     def __init__(self):
         super().__init__("Doctor", "green")
 
-class Sheriff(Role):
+class Hunter(Role):
     def __init__(self):
-        super().__init__("Sheriff", "blue")
+        super().__init__("Hunter", "blue")
+        self.normal_bullets = 1
+        self.silver_bullets = 1
+        self.is_reborn = False  # Indicates if this Hunter is from Reborn
 
-class Prostitute(Role):
+class Witch(Role):
     def __init__(self):
-        super().__init__("Prostitute", "pink")
+        super().__init__("Witch", "pink")
 
     def is_mafia_aligned(self):
         return True
 
-# You can add new roles here following the same structure
+class Occultist(Role):
+    def __init__(self):
+        super().__init__("Occultist", "darkpurple")
+
+    def is_mafia_aligned(self):
+        return True
+
+class Ghost(Role):
+    def __init__(self):
+        super().__init__("Ghost", "lightgray")
+
+class Maniac(Role):
+    def __init__(self):
+        super().__init__("Maniac", "black")
+
+class Reborn(Role):
+    def __init__(self):
+        super().__init__("Reborn", "gold")
+
+# Add new roles here following the same structure if needed
