@@ -1,22 +1,35 @@
 # rules.py
 
-from roles import Mafia, Villager, Doctor, Sheriff, Prostitute
+from roles import *
 from players import Player
 
 class GameRules:
     def __init__(self, players):
-        self.players = players  # List of Player instances
+        self.players = players
         self.night_count = 0
-        self.logbook = []  # List to store log entries
+        self.logbook = []
 
     def check_win_condition(self):
-        mafia_count = sum(1 for p in self.players if p.alive and p.role.is_mafia_aligned())
-        citizen_count = sum(1 for p in self.players if p.alive and not p.role.is_mafia_aligned())
+        mafia_count = sum(
+            1 for p in self.players if p.alive and p.role.is_mafia_aligned()
+        )
+        villager_count = sum(
+            1
+            for p in self.players
+            if p.alive
+            and not p.role.is_mafia_aligned()
+            and not isinstance(p.role, Maniac)
+        )
+        maniac_alive = any(
+            isinstance(p.role, Maniac) and p.alive for p in self.players
+        )
 
-        if mafia_count == 0:
-            return "Citizens Win"
-        elif mafia_count >= citizen_count and citizen_count > 0:
+        if mafia_count == 0 and not maniac_alive:
+            return "Villagers Win"
+        elif mafia_count >= villager_count and villager_count > 0 and not maniac_alive:
             return "Mafia Wins"
+        elif maniac_alive and mafia_count == 0 and villager_count == 0:
+            return "Maniac Wins"
         else:
             return None
 
@@ -28,76 +41,174 @@ class GameRules:
         self.night_count += 1
         night_log = []
         mafia_target = None
-        doctor_target = None
-        sheriff_investigations = []
-        prostitute_target = None
+        don_mafia = None
+        doctor_targets = []
+        hunter_checks = []
+        witch_target = None
+        occultist_target = None
+        maniac_target = None
 
-        # Mafia select target
-        mafia_players = [p for p in self.players if p.alive and isinstance(p.role, Mafia)]
-        if mafia_players:
-            for player in mafia_players:
-                if player.action_target and player.action_target.alive:
-                    mafia_target = player.action_target
-                    night_log.append(f"Mafia targeted {mafia_target.name}")
-                    break  # Only one target per night
-            if not mafia_target:
-                night_log.append("Mafia did not select a target")
+        # Don Mafia selects target
+        don_mafia_players = [
+            p for p in self.players if p.alive and isinstance(p.role, DonMafia)
+        ]
+        if don_mafia_players:
+            don_mafia = don_mafia_players[0]
+            if don_mafia.action_target and don_mafia.action_target.alive:
+                mafia_target = don_mafia.action_target
+                night_log.append(f"Don Mafia targeted {mafia_target.name}")
+            else:
+                night_log.append("Don Mafia did not select a target")
+        else:
+            # If Don Mafia is dead, Mafias can collectively select a target
+            mafia_players = [
+                p for p in self.players
+                if p.alive and p.role.is_mafia_aligned() and not isinstance(p.role, DonMafia)
+            ]
+            if mafia_players:
+                # Collectively choose a target (assuming they have agreed on one)
+                targets = [p.action_target for p in mafia_players if p.action_target and p.action_target.alive]
+                if targets:
+                    # Assuming majority vote among Mafias for target
+                    mafia_target = max(set(targets), key=targets.count)
+                    night_log.append(f"Mafias collectively targeted {mafia_target.name}")
+                else:
+                    night_log.append("Mafias did not select a target")
+            else:
+                night_log.append("No Mafias alive to select a target")
 
-        # Doctor selects target (can self-heal)
-        doctor_players = [p for p in self.players if p.alive and isinstance(p.role, Doctor)]
-        if doctor_players:
-            doctor = doctor_players[0]
+        # Doctor selects targets
+        doctor_players = [
+            p for p in self.players if p.alive and isinstance(p.role, Doctor)
+        ]
+        for doctor in doctor_players:
             if doctor.action_target and doctor.action_target.alive:
-                doctor_target = doctor.action_target
-                night_log.append(f"Doctor healed {doctor_target.name}")
+                doctor_targets.append(doctor.action_target)
+                night_log.append(f"Doctor {doctor.name} healed {doctor.action_target.name}")
             else:
-                night_log.append("Doctor did not select a target")
+                night_log.append(f"Doctor {doctor.name} did not select a target")
 
-        # Sheriff investigates
-        sheriff_players = [p for p in self.players if p.alive and isinstance(p.role, Sheriff)]
-        if sheriff_players:
-            sheriff = sheriff_players[0]
-            if sheriff.action_target and sheriff.action_target.alive:
-                target = sheriff.action_target
-                alignment = "Red" if target.role.is_mafia_aligned() else "Black"
-                night_log.append(f"Sheriff checked {target.name}, {alignment}")
-                sheriff_investigations.append((sheriff, target, alignment))
+        # Hunter actions
+        hunter_players = [
+            p for p in self.players if p.alive and isinstance(p.role, Hunter)
+        ]
+        for hunter in hunter_players:
+            if hunter.shooting_action:
+                bullet_type = hunter.shooting_action["bullet_type"]
+                target = hunter.shooting_action["target"]
+                if bullet_type == "silver" and hunter.role.silver_bullets > 0:
+                    hunter.role.silver_bullets -= 1
+                    if isinstance(target.role, Vampire):
+                        target.eliminate()
+                        night_log.append(
+                            f"Hunter {hunter.name} used silver bullet to kill Vampire {target.name}"
+                        )
+                    else:
+                        night_log.append(
+                            f"Silver bullet had no effect on {target.name}"
+                        )
+                elif bullet_type == "normal" and hunter.role.normal_bullets > 0:
+                    hunter.role.normal_bullets -= 1
+                    if not isinstance(target.role, Vampire):
+                        target.eliminate()
+                        night_log.append(
+                            f"Hunter {hunter.name} used normal bullet to kill {target.name}"
+                        )
+                    else:
+                        night_log.append(
+                            f"Normal bullet had no effect on Vampire {target.name}"
+                        )
+                else:
+                    night_log.append(f"Hunter {hunter.name} has no bullets left")
+                # Reset shooting action
+                hunter.shooting_action = None
+            elif hunter.action_target and hunter.action_target.alive:
+                target = hunter.action_target
+                # Check alignment
+                if isinstance(target.role, DonMafia):
+                    alignment = "Bloody Red"
+                elif target.role.is_mafia_aligned():
+                    alignment = "Red"
+                else:
+                    alignment = "Black"
+                night_log.append(
+                    f"Hunter {hunter.name} checked {target.name}, {alignment}"
+                )
+                hunter_checks.append((hunter, target, alignment))
             else:
-                night_log.append("Sheriff did not select a target")
+                night_log.append(f"Hunter {hunter.name} did not select an action")
 
-        # Prostitute selects target
-        prostitute_players = [p for p in self.players if p.alive and isinstance(p.role, Prostitute)]
-        if prostitute_players:
-            prostitute = prostitute_players[0]
-            if prostitute.action_target and prostitute.action_target.alive:
-                prostitute_target = prostitute.action_target
-                prostitute_target.disabled = True
-                night_log.append(f"Prostitute slept with {prostitute_target.name}")
+        # Witch actions
+        witch_players = [
+            p for p in self.players if p.alive and isinstance(p.role, Witch)
+        ]
+        if witch_players:
+            witch = witch_players[0]
+            if witch.action_target and witch.action_target.alive:
+                witch_target = witch.action_target
+                witch_target.disabled = True
+                night_log.append(f"Witch disabled {witch_target.name}")
             else:
-                night_log.append("Prostitute did not select a target")
+                night_log.append("Witch did not select a target")
+
+        # Occultist actions
+        occultist_players = [
+            p for p in self.players if p.alive and isinstance(p.role, Occultist)
+        ]
+        if occultist_players:
+            occultist = occultist_players[0]
+            if occultist.action_target and occultist.action_target.alive:
+                occultist_target = occultist.action_target
+                occultist_target.disabled = True
+                night_log.append(f"Occultist disabled {occultist_target.name}")
+                # Check if target is Ghost
+                if isinstance(occultist_target.role, Ghost):
+                    occultist_target.eliminate()
+                    night_log.append(
+                        f"Ghost {occultist_target.name} was eliminated by Occultist"
+                    )
+            else:
+                night_log.append("Occultist did not select a target")
+
+        # Maniac actions
+        maniac_players = [
+            p for p in self.players if p.alive and isinstance(p.role, Maniac)
+        ]
+        if maniac_players:
+            maniac = maniac_players[0]
+            if maniac.action_target and maniac.action_target.alive:
+                maniac_target = maniac.action_target
+                maniac_target.eliminate()
+                night_log.append(f"Maniac {maniac.name} killed {maniac_target.name}")
+            else:
+                night_log.append("Maniac did not select a target")
 
         # Resolve Mafia attack
         if mafia_target and mafia_target.alive:
-            if doctor_target == mafia_target:
-                night_log.append(f"{mafia_target.name} was attacked but healed by Doctor.")
-                # Player is saved; no elimination
+            if mafia_target in doctor_targets:
+                night_log.append(
+                    f"{mafia_target.name} was attacked but healed by Doctor(s)"
+                )
+            elif isinstance(mafia_target.role, Ghost):
+                night_log.append(f"Ghost {mafia_target.name} cannot be killed by Mafia")
             else:
                 mafia_target.eliminate()
-                night_log.append(f"{mafia_target.name} was killed by the Mafia.")
+                night_log.append(f"{mafia_target.name} was killed by the Mafia")
 
         # Prepare summary
         summary = []
-        if mafia_target and not mafia_target.alive:
-            summary.append(f"{mafia_target.name} was killed")
-        else:
-            summary.append("No one was killed")
-
-        if prostitute_target:
-            summary.append(f"{prostitute_target.name} cannot talk or vote today")
+        # Include all deaths and effects
+        for player in self.players:
+            if not player.alive and not player.reported_dead:
+                summary.append(f"{player.name} was found dead")
+                player.reported_dead = True
+            elif player.disabled and not player.reported_disabled:
+                summary.append(f"{player.name} is unable to act today")
+                player.reported_disabled = True
 
         night_log.append("SUMMARY:")
         night_log.extend(summary)
-        night_log.append("----------------------")  # Add separator line
+        night_log.append("----------------------")
 
         # Add night log to the logbook
         self.logbook.append(f"Night {self.night_count} Actions:")
